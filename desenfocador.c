@@ -5,6 +5,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <string.h>
+#include <unistd.h>
 #include "common.h"
 
 // Estructura de argumentos para los hilos

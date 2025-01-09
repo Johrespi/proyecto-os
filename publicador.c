@@ -4,6 +4,7 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <string.h>
+#include <unistd.h>
 #include "common.h"
 
 /* Función principal del Publicador */
