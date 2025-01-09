@@ -3,25 +3,29 @@
 
 #include "bmp.h"
 
-// Nombre de la memoria compartida
 #define SHM_NAME "/bmp_shared_mem"
 
-// Tamaño máximo de la imagen en bytes (ajustar según necesidades)
-#define SHM_SIZE (50 * 1024 * 1024) // 50 MB
+// Definir dimensiones máximas según tus necesidades
+#define MAX_WIDTH 1920
+#define MAX_HEIGHT 1080
+
+// Tamaño de la memoria compartida
+#define SHM_SIZE (sizeof(SharedData))
 
 // Nombres de los semáforos
 #define SEM_IMAGE_READY "/sem_image_ready"
 #define SEM_DESENFOCAR_DONE "/sem_desenfocar_done"
 #define SEM_REALZAR_DONE "/sem_realzar_done"
 
-// Estructura para compartir datos
+// Estructura para compartir datos sin punteros internos
 typedef struct {
-    BMP_Image image;           // Imagen BMP original
-    BMP_Image imageOutDes;     // Imagen procesada por Desenfocador
-    BMP_Image imageOutReal;    // Imagen procesada por Realzador
+    BMP_Header header;                           // Encabezado BMP
+    Pixel pixels[MAX_HEIGHT][MAX_WIDTH];         // Imagen BMP original
+    Pixel pixelsOutDes[MAX_HEIGHT][MAX_WIDTH];   // Imagen desenfocada
+    Pixel pixelsOutReal[MAX_HEIGHT][MAX_WIDTH];  // Imagen realzada
 } SharedData;
 
-// Declaración de la función para duplicar encabezado
+// Declaración de la función para duplicar encabezado (si aún es necesaria)
 BMP_Image *duplicateBMPImageHeader(BMP_Image *sourceImage);
 
 #endif // COMMON_H

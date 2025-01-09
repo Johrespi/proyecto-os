@@ -7,7 +7,16 @@
 #include <unistd.h>
 #include "common.h"
 
-/* Función principal del Publicador */
+/* Función para copiar la imagen BMP en SharedData */
+void copyBMPImage(SharedData *sharedImage, BMP_Image *sourceImage) {
+    sharedImage->header = sourceImage->header;
+    for (int y = 0; y < sourceImage->header.height_px; y++) {
+        for (int x = 0; x < sourceImage->header.width_px; x++) {
+            sharedImage->pixels[y][x] = sourceImage->pixels[y][x];
+        }
+    }
+}
+
 int main() {
     // Crear y mapear la memoria compartida
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
@@ -26,6 +35,9 @@ int main() {
         perror("mmap");
         exit(EXIT_FAILURE);
     }
+
+    // Inicializar SharedData si es necesario
+    memset(shared, 0, sizeof(SharedData));
 
     // Abrir semáforos
     sem_t *sem_image_ready = sem_open(SEM_IMAGE_READY, O_CREAT, 0666, 0);
@@ -54,16 +66,12 @@ int main() {
 
         // Crear la imagen
         BMP_Image *image = createBMPImage();
-        readImage(source, image);
-        if (image == NULL) {
+        if (readImage(source, shared) == -1) { // readImage ahora trabaja con SharedData
             printf("Error al crear la imagen BMP.\n");
             fclose(source);
+            freeImage(shared);
             continue;
         }
-
-        // Asignar la imagen cargada a la memoria compartida
-        shared->image = *image;
-        freeImage(image); // Liberar la memoria temporal
 
         fclose(source);
 

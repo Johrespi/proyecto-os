@@ -58,17 +58,17 @@ typedef struct BMP_Image {
     BMP_Header header;
     int norm_height; //normalized height
     int bytes_per_pixel; // This amount should be equals to number of bits/8
-    Pixel ** pixels;
+    //Pixel ** pixels;
 } BMP_Image;
 
 void printError(int error);
 BMP_Image* createBMPImage();
-void readImageData(FILE *srcFile, BMP_Image *dataImage, int dataSize);
-void readImage(FILE *srcFile, BMP_Image *dataImage);
-void writeImage(char* destFileName, BMP_Image* dataImage);
-void freeImage(BMP_Image* image);
+int readImageData(FILE *srcFile, SharedData *shared, int dataSize);
+int readImage(FILE *srcFile, SharedData *shared);
+int writeImage(char* destFileName, SharedData *shared);
+void freeImage(SharedData* shared);
 int checkBMPValid(BMP_Header* header);
 void printBMPHeader(BMP_Header* header);
-void printBMPImage(BMP_Image* image);
+void printBMPImage(SharedData* shared);
 
 #endif /* bmp.h */

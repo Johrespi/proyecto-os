@@ -10,8 +10,7 @@
 
 // Estructura de argumentos para los hilos
 typedef struct {
-    BMP_Image *imageIn;
-    BMP_Image *imageOut;
+    SharedData *shared;
     int startRow;
     int endRow;
     int filter[3][3];
@@ -20,36 +19,39 @@ typedef struct {
 // Función del hilo para aplicar el filtro de realce de bordes
 void *filterThreadWorkerReal(void *args) {
     ThreadArgs *threadArgs = (ThreadArgs *)args;
-    BMP_Image *imageIn = threadArgs->imageIn;
-    BMP_Image *imageOut = threadArgs->imageOut;
+    SharedData *shared = threadArgs->shared;
     int (*filter)[3] = threadArgs->filter;
 
     for (int y = threadArgs->startRow; y < threadArgs->endRow; y++) {
-        for (int x = 0; x < imageIn->header.width_px; x++) {
+        for (int x = 0; x < shared->header.width_px; x++) {
             int red = 0, green = 0, blue = 0;
 
-            for (int fy = -1; fy <=1; fy++) {
-                for (int fx = -1; fx <=1; fx++) {
+            for (int fy = -1; fy <= 1; fy++) {
+                for (int fx = -1; fx <= 1; fx++) {
                     int ny = y + fy;
                     int nx = x + fx;
 
                     if (ny < 0) ny = 0;
-                    if (ny >= imageIn->norm_height) ny = imageIn->norm_height -1;
+                    if (ny >= shared->header.height_px) ny = shared->header.height_px - 1;
                     if (nx < 0) nx = 0;
-                    if (nx >= imageIn->header.width_px) nx = imageIn->header.width_px -1;
+                    if (nx >= shared->header.width_px) nx = shared->header.width_px - 1;
 
-                    Pixel neighbor = imageIn->pixels[ny][nx];
-                    red += neighbor.red * filter[fy+1][fx+1];
-                    green += neighbor.green * filter[fy+1][fx+1];
-                    blue += neighbor.blue * filter[fy+1][fx+1];
+                    Pixel neighbor = shared->pixels[ny][nx];
+                    red += neighbor.red * filter[fy + 1][fx + 1];
+                    green += neighbor.green * filter[fy + 1][fx + 1];
+                    blue += neighbor.blue * filter[fy + 1][fx + 1];
                 }
             }
 
             // Asegurarse de que los valores de color estén dentro del rango [0, 255]
-            imageOut->pixels[y][x].red = (red > 255) ? 255 : ((red < 0) ? 0 : red);
-            imageOut->pixels[y][x].green = (green > 255) ? 255 : ((green < 0) ? 0 : green);
-            imageOut->pixels[y][x].blue = (blue > 255) ? 255 : ((blue < 0) ? 0 : blue);
-            imageOut->pixels[y][x].alpha = imageIn->pixels[y][x].alpha;
+            red = (red > 255) ? 255 : ((red < 0) ? 0 : red);
+            green = (green > 255) ? 255 : ((green < 0) ? 0 : green);
+            blue = (blue > 255) ? 255 : ((blue < 0) ? 0 : blue);
+
+            shared->pixelsOutReal[y][x].red = red;
+            shared->pixelsOutReal[y][x].green = green;
+            shared->pixelsOutReal[y][x].blue = blue;
+            shared->pixelsOutReal[y][x].alpha = shared->pixels[y][x].alpha;
         }
     }
 
@@ -95,25 +97,17 @@ int main(int argc, char **argv) {
 
         printf("Realzador: Procesando imagen...\n");
 
-        // Crear una imagen de salida para la segunda mitad
-        BMP_Image *imageOutReal = duplicateBMPImageHeader(&shared->image);
-        if (imageOutReal == NULL) {
-            printf("Realzador: Error al crear la imagen de salida.\n");
-            continue;
-        }
-
         // Definir las filas a procesar (segunda mitad)
-        int halfHeight = shared->image.norm_height / 2;
-        int rowsPerThread = (shared->image.norm_height - halfHeight) / numThreads;
+        int halfHeight = shared->header.height_px / 2;
+        int rowsPerThread = (shared->header.height_px - halfHeight) / numThreads;
 
         pthread_t threads[numThreads];
         ThreadArgs threadArgs[numThreads];
 
         for (int i = 0; i < numThreads; i++) {
-            threadArgs[i].imageIn = &shared->image;
-            threadArgs[i].imageOut = imageOutReal;
+            threadArgs[i].shared = shared;
             threadArgs[i].startRow = halfHeight + i * rowsPerThread;
-            threadArgs[i].endRow = (i == numThreads -1) ? shared->image.norm_height : halfHeight + (i +1) * rowsPerThread;
+            threadArgs[i].endRow = (i == numThreads - 1) ? shared->header.height_px : halfHeight + (i + 1) * rowsPerThread;
             memcpy(threadArgs[i].filter, edgeFilter, sizeof(edgeFilter));
 
             if (pthread_create(&threads[i], NULL, filterThreadWorkerReal, &threadArgs[i]) != 0) {
@@ -126,10 +120,6 @@ int main(int argc, char **argv) {
         for (int i = 0; i < numThreads; i++) {
             pthread_join(threads[i], NULL);
         }
-
-        // Guardar la imagen realzada en la memoria compartida
-        shared->imageOutReal = *imageOutReal;
-        freeImage(imageOutReal); // Liberar la memoria temporal
 
         printf("Realzador: Procesamiento completado.\n");
 

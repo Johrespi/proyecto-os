@@ -10,8 +10,7 @@
 
 // Estructura de argumentos para los hilos
 typedef struct {
-    BMP_Image *imageIn;
-    BMP_Image *imageOut;
+    SharedData *shared;
     int startRow;
     int endRow;
     int filter[3][3];
@@ -21,36 +20,35 @@ typedef struct {
 // Función del hilo para aplicar el filtro de desenfoque
 void *filterThreadWorker(void *args) {
     ThreadArgs *threadArgs = (ThreadArgs *)args;
-    BMP_Image *imageIn = threadArgs->imageIn;
-    BMP_Image *imageOut = threadArgs->imageOut;
+    SharedData *shared = threadArgs->shared;
     int (*filter)[3] = threadArgs->filter;
     int norm = threadArgs->normalizationFactor;
 
     for (int y = threadArgs->startRow; y < threadArgs->endRow; y++) {
-        for (int x = 0; x < imageIn->header.width_px; x++) {
+        for (int x = 0; x < shared->header.width_px; x++) {
             int red = 0, green = 0, blue = 0;
 
-            for (int fy = -1; fy <=1; fy++) {
-                for (int fx = -1; fx <=1; fx++) {
+            for (int fy = -1; fy <= 1; fy++) {
+                for (int fx = -1; fx <= 1; fx++) {
                     int ny = y + fy;
                     int nx = x + fx;
 
                     if (ny < 0) ny = 0;
-                    if (ny >= imageIn->norm_height) ny = imageIn->norm_height -1;
+                    if (ny >= shared->header.height_px) ny = shared->header.height_px - 1;
                     if (nx < 0) nx = 0;
-                    if (nx >= imageIn->header.width_px) nx = imageIn->header.width_px -1;
+                    if (nx >= shared->header.width_px) nx = shared->header.width_px - 1;
 
-                    Pixel neighbor = imageIn->pixels[ny][nx];
-                    red += neighbor.red * filter[fy+1][fx+1];
-                    green += neighbor.green * filter[fy+1][fx+1];
-                    blue += neighbor.blue * filter[fy+1][fx+1];
+                    Pixel neighbor = shared->pixels[ny][nx];
+                    red += neighbor.red * filter[fy + 1][fx + 1];
+                    green += neighbor.green * filter[fy + 1][fx + 1];
+                    blue += neighbor.blue * filter[fy + 1][fx + 1];
                 }
             }
 
-            imageOut->pixels[y][x].red = red / norm;
-            imageOut->pixels[y][x].green = green / norm;
-            imageOut->pixels[y][x].blue = blue / norm;
-            imageOut->pixels[y][x].alpha = imageIn->pixels[y][x].alpha;
+            shared->pixelsOutDes[y][x].red = red / norm;
+            shared->pixelsOutDes[y][x].green = green / norm;
+            shared->pixelsOutDes[y][x].blue = blue / norm;
+            shared->pixelsOutDes[y][x].alpha = shared->pixels[y][x].alpha;
         }
     }
 
@@ -97,25 +95,17 @@ int main(int argc, char **argv) {
 
         printf("Desenfocador: Procesando imagen...\n");
 
-        // Crear una imagen de salida para la primera mitad
-        BMP_Image *imageOutDes = duplicateBMPImageHeader(&shared->image);
-        if (imageOutDes == NULL) {
-            printf("Desenfocador: Error al crear la imagen de salida.\n");
-            continue;
-        }
-
         // Definir las filas a procesar (primera mitad)
-        int halfHeight = shared->image.norm_height / 2;
+        int halfHeight = shared->header.height_px / 2;
         int rowsPerThread = halfHeight / numThreads;
 
         pthread_t threads[numThreads];
         ThreadArgs threadArgs[numThreads];
 
         for (int i = 0; i < numThreads; i++) {
-            threadArgs[i].imageIn = &shared->image;
-            threadArgs[i].imageOut = imageOutDes;
+            threadArgs[i].shared = shared;
             threadArgs[i].startRow = i * rowsPerThread;
-            threadArgs[i].endRow = (i == numThreads -1) ? halfHeight : (i +1) * rowsPerThread;
+            threadArgs[i].endRow = (i == numThreads - 1) ? halfHeight : (i + 1) * rowsPerThread;
             memcpy(threadArgs[i].filter, boxFilter, sizeof(boxFilter));
             threadArgs[i].normalizationFactor = normalizationFactor;
 
@@ -129,10 +119,6 @@ int main(int argc, char **argv) {
         for (int i = 0; i < numThreads; i++) {
             pthread_join(threads[i], NULL);
         }
-
-        // Guardar la imagen desenfocada en la memoria compartida
-        shared->imageOutDes = *imageOutDes;
-        freeImage(imageOutDes); // Liberar la memoria temporal
 
         printf("Desenfocador: Procesamiento completado.\n");
 

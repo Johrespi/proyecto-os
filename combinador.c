@@ -9,15 +9,15 @@
 
 /* Función para combinar las mitades desenfocada y realzada */
 void combinarMitades(SharedData *shared) {
-    int halfHeight = shared->image.norm_height / 2;
-    for (int y = 0; y < shared->image.norm_height; y++) {
-        for (int x = 0; x < shared->image.header.width_px; x++) {
+    int halfHeight = shared->header.height_px / 2;
+    for (int y = 0; y < shared->header.height_px; y++) {
+        for (int x = 0; x < shared->header.width_px; x++) {
             if (y < halfHeight) {
                 // Tomar píxeles de la imagen desenfocada
-                shared->image.pixels[y][x] = shared->imageOutDes.pixels[y][x];
+                shared->pixels[y][x] = shared->pixelsOutDes[y][x];
             } else {
                 // Tomar píxeles de la imagen realzada
-                shared->image.pixels[y][x] = shared->imageOutReal.pixels[y][x];
+                shared->pixels[y][x] = shared->pixelsOutReal[y][x];
             }
         }
     }
@@ -64,7 +64,35 @@ int main(int argc, char **argv) {
         combinarMitades(shared);
 
         // Escribir la imagen combinada en disco
-        writeImage(output_path, &shared->image);
+        FILE *destFile = fopen(output_path, "wb");
+        if (destFile == NULL) {
+            perror("fopen");
+            continue;
+        }
+
+        // Escribir el encabezado
+        if (fwrite(&(shared->header), sizeof(BMP_Header), 1, destFile) != 1) {
+            printError(FILE_ERROR);
+            fclose(destFile);
+            continue;
+        }
+
+        // Saltar al offset de los datos de imagen
+        if (fseek(destFile, shared->header.offset, SEEK_SET) != 0) {
+            printError(FILE_ERROR);
+            fclose(destFile);
+            continue;
+        }
+
+        // Escribir los píxeles
+        for (int y = 0; y < shared->header.height_px; y++) {
+            if (fwrite(shared->pixels[y], sizeof(Pixel), shared->header.width_px, destFile) != shared->header.width_px) {
+                printError(FILE_ERROR);
+                break;
+            }
+        }
+
+        fclose(destFile);
 
         printf("Combinador: Imagen combinada guardada en %s\n", output_path);
     }
