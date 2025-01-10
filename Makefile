@@ -20,4 +20,4 @@ combinador: combinador.c bmp.c common.h bmp.h
 	$(CC) $(CFLAGS) -o combinador combinador.c bmp.c $(LDFLAGS)
 
 clean:
-	rm -f $(FILES)
+	 rm -f $(FILES)

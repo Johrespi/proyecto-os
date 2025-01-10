@@ -30,6 +30,7 @@ BMP_Image* createBMPImage() {
         printError(MEMORY_ERROR);
         return NULL;
     }
+    memset(image, 0, sizeof(BMP_Image));
     return image;
 }
 

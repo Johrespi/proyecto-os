@@ -1,8 +1,10 @@
-#include <stdint.h>
-#include <stdio.h>
 #ifndef _BMP_H_
 #define _BMP_H_
-#define TRUE 1
+
+#include <stdint.h>
+#include <stdio.h>
+
+#define TRUE 1  
 #define FALSE 0
 #define ARGUMENT_ERROR 1
 #define FILE_ERROR 2
@@ -27,6 +29,9 @@
 /** 
  * BMP header (54 bytes).
  */
+
+// Declaración adelantada para evitar dependencias cíclicas
+typedef struct SharedData SharedData;
 
 typedef struct __attribute__((packed)) BMP_Header {
     uint16_t type;           // Magic identifier
@@ -53,6 +58,9 @@ typedef struct __attribute__((packed)) Pixel {
     uint8_t red;
     uint8_t alpha;
 } Pixel;
+
+// Declaración adelantada para evitar dependencias cíclicas
+typedef struct SharedData SharedData;
 
 typedef struct BMP_Image {
     BMP_Header header;
