@@ -27,7 +27,7 @@ SharedData* map_shared_memory() {
 }
 
 /* Función simple de realce de bordes */
-void apply_edge_enhance(SharedData *shared) {
+void apply_realce(SharedData *shared) {
     for (int y =1; y < shared->header.height_px -1; y++) {
         for (int x =1; x < shared->header.width_px -1; x++) {
             // Simple realce: new = 2*current - vecinos promedio
@@ -59,47 +59,47 @@ void apply_edge_enhance(SharedData *shared) {
 }
 
 int main() {
+    printf("Realzador iniciado.\n");
+
     // Mapear memoria compartida
     SharedData *shared = map_shared_memory();
     if (shared == NULL) {
+        printf("Error al mapear memoria compartida.\n");
         return EXIT_FAILURE;
     }
+    printf("Memoria compartida mapeada.\n");
 
     // Abrir semáforos
     sem_t *sem_image_ready = sem_open(SEM_IMAGE_READY, 0);
     sem_t *sem_realzar_done = sem_open(SEM_REALZAR_DONE, 0);
-
     if (sem_image_ready == SEM_FAILED || sem_realzar_done == SEM_FAILED) {
-        printError(FILE_ERROR);
-        if (sem_image_ready != SEM_FAILED) sem_close(sem_image_ready);
-        if (sem_realzar_done != SEM_FAILED) sem_close(sem_realzar_done);
-        munmap(shared, sizeof(SharedData));
+        printf("Error al abrir semáforos.\n");
         return EXIT_FAILURE;
     }
+    printf("Semáforos abiertos.\n");
 
     // Esperar a que la imagen esté lista
+    printf("Realzador esperando sem_image_ready.\n");
     if (sem_wait(sem_image_ready) == -1) {
-        printError(FILE_ERROR);
-        // Cerrar semáforos y desmapear memoria
-        sem_close(sem_image_ready);
-        sem_close(sem_realzar_done);
-        munmap(shared, sizeof(SharedData));
-        return EXIT_FAILURE;
+        perror("sem_wait");
     }
+    printf("sem_image_ready recibido.\n");
 
     // Aplicar realce
-    apply_edge_enhance(shared);
+    apply_realce(shared);
+    printf("Realzador ha aplicado el realce.\n");
 
     // Señalar que el realce ha terminado
     if (sem_post(sem_realzar_done) == -1) {
-        printError(FILE_ERROR);
-        // Continuar
+        perror("sem_post");
     }
+    printf("sem_realzar_done publicado.\n");
 
-    // Cerrar semáforos y desmapear memoria
+    // Cerrar semáforos y memoria compartida
     sem_close(sem_image_ready);
     sem_close(sem_realzar_done);
     munmap(shared, sizeof(SharedData));
 
+    printf("Realzador finalizado.\n");
     return EXIT_SUCCESS;
 }

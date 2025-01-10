@@ -6,7 +6,7 @@
 #include <sys/mman.h>   // Para mmap
 #include <semaphore.h>
 #include <string.h>
-#include <unistd.h>
+#include <unistd.h>     // Para getcwd
 
 /* Función para mapear la memoria compartida */
 SharedData* map_shared_memory() {
@@ -33,7 +33,15 @@ SharedData* map_shared_memory() {
     return shared;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    // Validar argumentos de línea de comandos
+    if (argc != 2) {
+        fprintf(stderr, "Uso: %s <ruta_a_imagen.bmp>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    char *image_path = argv[1];
+
     // Mapear memoria compartida
     SharedData *shared = map_shared_memory();
     if (shared == NULL) {
@@ -55,8 +63,8 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Abrir imagen de entrada
-    FILE *source = fopen("/testcases/test.bmp", "rb");
+    // Abrir imagen de entrada con la ruta proporcionada
+    FILE *source = fopen(image_path, "rb");
     if (!source) {
         printError(FILE_ERROR);
         // Cerrar semáforos y desmapear memoria compartida
@@ -104,6 +112,12 @@ int main() {
     sem_close(sem_desenfocar_done);
     sem_close(sem_realzar_done);
     munmap(shared, sizeof(SharedData));
+
+    // Eliminar memoria compartida y semáforos
+    shm_unlink(SHM_NAME);
+    sem_unlink(SEM_IMAGE_READY);
+    sem_unlink(SEM_DESENFOCAR_DONE);
+    sem_unlink(SEM_REALZAR_DONE);
 
     return EXIT_SUCCESS;
 }
