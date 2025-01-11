@@ -1,124 +1,190 @@
 #include "bmp.h"
 #include "common.h"
-
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
+/*
+ * Muestra un mensaje de error simple.
+ */
 void printError(int error) {
-    switch(error){
+    switch(error) {
         case ARGUMENT_ERROR:
             printf("Error: Argumento inválido.\n");
             break;
         case FILE_ERROR:
-            printf("Error: Archivo no encontrado o no accesible.\n");
+            printf("Error: Archivo no accesible o no encontrado.\n");
             break;
         case MEMORY_ERROR:
-            printf("Error: Fallo en la asignación de memoria.\n");
+            printf("Error: Fallo de memoria.\n");
             break;
         case VALID_ERROR:
-            printf("Error: Archivo BMP inválido.\n");
+            printf("Error: Archivo BMP inválido o no soportado.\n");
             break;
         default:
             printf("Error desconocido.\n");
     }
 }
 
-BMP_Image* createBMPImage() {
-    BMP_Image *image = malloc(sizeof(BMP_Image));
-    if (image == NULL) {
-        printError(MEMORY_ERROR);
-        return NULL;
-    }
-    memset(image, 0, sizeof(BMP_Image));
-    return image;
+/*
+ * Verifica si el BMP es válido (bits_per_pixel 24/32, compresión = 0, 'BM').
+ */
+int checkBMPValid(BMP_Header* header) {
+    if (header->type != 0x4D42) return 0;
+    if (header->compression != 0) return 0;
+    if (header->bits_per_pixel != 24 && header->bits_per_pixel != 32) return 0;
+    return 1;
 }
 
-int readImageData(FILE *srcFile, SharedData *shared, int dataSize) {
-    for (int y = 0; y < shared->header.height_px; y++) {
-        if (fread(shared->pixels[y], sizeof(Pixel), shared->header.width_px, srcFile) != shared->header.width_px) {
-            printError(FILE_ERROR);
-            return -1;
+/*
+ * Lee la imagen al recurso compartido, respetando 24/32 bits y corrige el flip.
+ */
+static int readImageData(FILE *srcFile, SharedData* shared, int inverted) {
+    int width = shared->header.width_px;
+    int height = shared->header.height_px;
+    int bpp = shared->header.bits_per_pixel;
+
+    for (int i = 0; i < height; i++) {
+        // Si era bottom-up (height>0), la primera línea que leemos va al final
+        // Si era top-down (negativo), invertido=1 y leemos en orden normal.
+        int rowIndex = inverted ? i : (height - 1 - i);
+
+        for (int x = 0; x < width; x++) {
+            if (bpp == 24) {
+                unsigned char bgr[3];
+                if (fread(bgr, 3, 1, srcFile) != 1) {
+                    printError(FILE_ERROR);
+                    return -1;
+                }
+                shared->pixels[rowIndex][x].blue  = bgr[0];
+                shared->pixels[rowIndex][x].green = bgr[1];
+                shared->pixels[rowIndex][x].red   = bgr[2];
+                shared->pixels[rowIndex][x].alpha = 255;
+            } else {
+                // 32 bits (BGRA)
+                unsigned char bgra[4];
+                if (fread(bgra, 4, 1, srcFile) != 1) {
+                    printError(FILE_ERROR);
+                    return -1;
+                }
+                shared->pixels[rowIndex][x].blue  = bgra[0];
+                shared->pixels[rowIndex][x].green = bgra[1];
+                shared->pixels[rowIndex][x].red   = bgra[2];
+                shared->pixels[rowIndex][x].alpha = bgra[3];
+            }
+        }
+        // Padding en 24 bits a múltiplos de 4
+        if (bpp == 24) {
+            int rowPad = (4 - ((width * 3) % 4)) % 4;
+            if (rowPad) fseek(srcFile, rowPad, SEEK_CUR);
         }
     }
     return 0;
 }
 
-int readImage(FILE *srcFile, SharedData *shared) {
+int readImage(FILE *srcFile, void* sharedVoid) {
+    SharedData* shared = (SharedData*)sharedVoid;
+
+    // Leer encabezado
     if (fread(&(shared->header), sizeof(BMP_Header), 1, srcFile) != 1) {
         printError(FILE_ERROR);
         return -1;
     }
-
+    // Validar
     if (!checkBMPValid(&(shared->header))) {
         printError(VALID_ERROR);
         return -1;
     }
 
-    shared->header.height_px = shared->header.height_px < 0 ? -shared->header.height_px : shared->header.height_px;
+    // Detectar si está invertido (top-down)
+    int inverted = 0;
+    if (shared->header.height_px < 0) {
+        inverted = 1;
+        shared->header.height_px = -shared->header.height_px;
+    }
 
     if (shared->header.width_px > MAX_WIDTH || shared->header.height_px > MAX_HEIGHT) {
         printError(VALID_ERROR);
         return -1;
     }
 
+    // Ir a offset
     if (fseek(srcFile, shared->header.offset, SEEK_SET) != 0) {
         printError(FILE_ERROR);
         return -1;
     }
 
-    return readImageData(srcFile, shared, shared->header.width_px * shared->header.height_px);
+    // Leer data
+    return readImageData(srcFile, shared, inverted);
 }
 
-int writeImage(char* destFileName, SharedData *shared) {
-    FILE *destFile = fopen(destFileName, "wb");
-    if (destFile == NULL) {
+/*
+ * Escribe la imagen al disco en formato bottom-up (height>0).
+ */
+int writeImage(char* destFileName, void* sharedVoid) {
+    SharedData* shared = (SharedData*)sharedVoid;
+    FILE* out = fopen(destFileName, "wb");
+    if (!out) {
         printError(FILE_ERROR);
         return -1;
     }
 
-    if (fwrite(&(shared->header), sizeof(BMP_Header), 1, destFile) != 1) {
+    // Escribir encabezado
+    if (fwrite(&(shared->header), sizeof(BMP_Header), 1, out) != 1) {
         printError(FILE_ERROR);
-        fclose(destFile);
+        fclose(out);
         return -1;
     }
 
-    if (fseek(destFile, shared->header.offset, SEEK_SET) != 0) {
+    // Posicionarnos en offset
+    if (fseek(out, shared->header.offset, SEEK_SET) != 0) {
         printError(FILE_ERROR);
-        fclose(destFile);
+        fclose(out);
         return -1;
     }
 
-    for (int y = 0; y < shared->header.height_px; y++) {
-        if (fwrite(shared->pixels[y], sizeof(Pixel), shared->header.width_px, destFile) != shared->header.width_px) {
-            printError(FILE_ERROR);
-            fclose(destFile);
-            return -1;
+    int width = shared->header.width_px;
+    int height= shared->header.height_px;
+    int bpp   = shared->header.bits_per_pixel;
+
+    // Guardar en orden bottom-up
+    for (int i = 0; i < height; i++) {
+        int rowIndex = (height - 1 - i);
+
+        for (int x = 0; x < width; x++) {
+            Pixel p = shared->pixels[rowIndex][x];
+            if (bpp == 24) {
+                unsigned char bgr[3];
+                bgr[0] = p.blue;
+                bgr[1] = p.green;
+                bgr[2] = p.red;
+                if (fwrite(bgr, 3, 1, out) != 1) {
+                    printError(FILE_ERROR);
+                    fclose(out);
+                    return -1;
+                }
+            } else {
+                unsigned char bgra[4];
+                bgra[0] = p.blue;
+                bgra[1] = p.green;
+                bgra[2] = p.red;
+                bgra[3] = p.alpha;
+                if (fwrite(bgra, 4, 1, out) != 1) {
+                    printError(FILE_ERROR);
+                    fclose(out);
+                    return -1;
+                }
+            }
+        }
+        // Padding si 24 bits
+        if (bpp == 24) {
+            int rowPad = (4 - ((width * 3) % 4)) % 4;
+            if (rowPad) {
+                unsigned char pad[3] = {0};
+                fwrite(pad, rowPad, 1, out);
+            }
         }
     }
 
-    fclose(destFile);
+    fclose(out);
     return 0;
-}
-
-void freeImage(SharedData* shared) {
-    // No dynamic memory to free
-}
-
-int checkBMPValid(BMP_Header* header) {
-    return (header->type == 0x4D42);
-}
-
-void printBMPHeader(BMP_Header* header) {
-    printf("Tipo: %c%c\n", header->type & 0xFF, (header->type >> 8) & 0xFF);
-    printf("Tamaño: %u bytes\n", header->size);
-    printf("Offset de datos: %u bytes\n", header->offset);
-    printf("Ancho: %d px\n", header->width_px);
-    printf("Alto: %d px\n", header->height_px);
-    printf("Planes: %u\n", header->planes);
-    printf("Bits por pixel: %u\n", header->bits_per_pixel);
-}
-
-void printBMPImage(SharedData* shared) {
-    printBMPHeader(&(shared->header));
 }
