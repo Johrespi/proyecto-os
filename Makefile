@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -pthread
 LDFLAGS = -lrt
 
-FILES = publicador desenfocador realzador combinador
+FILES = publicador desenfocador realzador
 SRC = bmp.c
 
 all: $(FILES)
@@ -15,9 +15,6 @@ desenfocador: desenfocador.c bmp.c common.h bmp.h
 
 realzador: realzador.c bmp.c common.h bmp.h
 	$(CC) $(CFLAGS) -o realzador realzador.c bmp.c $(LDFLAGS)
-
-combinador: combinador.c bmp.c common.h bmp.h
-	$(CC) $(CFLAGS) -o combinador combinador.c bmp.c $(LDFLAGS)
 
 clean:
 	 rm -f $(FILES)
