@@ -64,6 +64,8 @@ int main() {
 
     while (1) {
         printf("[Publicador] Ingrese ruta BMP (o 'exit' para terminar): ");
+        fflush(stdout);
+
         char path[256];
         if (!fgets(path, sizeof(path), stdin)) {
             break;
@@ -87,14 +89,40 @@ int main() {
         fclose(f);
         printf("[Publicador] Imagen cargada.\n");
 
-        // In the while loop, replace the two sem_post with:
+        printf("[Publicador] Señalizando procesos...\n");
+        
+        // Debug semaphore values
+        int val_desenfocar, val_realzar;
+        sem_getvalue(sem_desenfocar_done, &val_desenfocar);
+        sem_getvalue(sem_realzar_done, &val_realzar);
+        printf("[Publicador] Estado inicial semáforos - Desenfocar: %d, Realzar: %d\n", 
+               val_desenfocar, val_realzar);
+
+        // Signal processes
         sem_post(sem_desenfocar_ready);
         sem_post(sem_realzar_ready);
+        printf("[Publicador] Señales enviadas a procesos\n");
 
-        // Esperar a desenfocador y realzador
-        sem_wait(sem_desenfocar_done);
-        sem_wait(sem_realzar_done);
-        printf("[Publicador] Desenfoque y realce completados.\n");
+        printf("[Publicador] Esperando desenfocador...\n");
+        if (sem_wait(sem_desenfocar_done) == -1) {
+            perror("[Publicador] Error esperando desenfocador");
+            continue;
+        }
+        printf("[Publicador] Desenfocador completado\n");
+
+        printf("[Publicador] Esperando realzador...\n");
+        if (sem_wait(sem_realzar_done) == -1) {
+            perror("[Publicador] Error esperando realzador");
+            continue;
+        }
+        printf("[Publicador] Realzador completado\n");
+
+        sem_getvalue(sem_desenfocar_done, &val_desenfocar);
+        sem_getvalue(sem_realzar_done, &val_realzar);
+        printf("[Publicador] Estado final semáforos - Desenfocar: %d, Realzar: %d\n", 
+               val_desenfocar, val_realzar);
+
+        printf("[Publicador] Listo para siguiente imagen.\n\n");
     }
 
     // Cerrar semáforos

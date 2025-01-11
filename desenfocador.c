@@ -90,7 +90,8 @@ int main(int argc, char* argv[]) {
 
         printf("[Desenfocador] Desenfoque completado.\n");
 
-        // Avisar que ha terminado
+        // Avisar que ha terminado, DOS veces
+        sem_post(sem_desenfocar_done);
         sem_post(sem_desenfocar_done);
     }
 

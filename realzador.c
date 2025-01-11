@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     }
 
     sem_t* sem_realzar_ready = sem_open(SEM_REALZAR_READY, 0);
-    sem_t* sem_realzar_done = sem_open(SEM_REALZAR_DONE, 0);
+    sem_t* sem_realzar_done  = sem_open(SEM_REALZAR_DONE, 0);
 
     if (sem_realzar_ready == SEM_FAILED || sem_realzar_done == SEM_FAILED) {
         printError(FILE_ERROR);
@@ -100,7 +100,8 @@ int main(int argc, char* argv[]) {
 
         printf("[Realzador] Realce completado.\n");
 
-        // Avisar que ha terminado
+        // Avisar que ha terminado, DOS veces
+        sem_post(sem_realzar_done);
         sem_post(sem_realzar_done);
     }
 
