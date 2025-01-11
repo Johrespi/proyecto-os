@@ -11,7 +11,8 @@
 #define MAX_HEIGHT 1080
 
 // Nombres de semáforos
-#define SEM_IMAGE_READY      "/sem_image_ready"
+#define SEM_DESENFOCAR_READY  "/sem_desenfocar_ready"  // New
+#define SEM_REALZAR_READY     "/sem_realzar_ready"     // New
 #define SEM_DESENFOCAR_DONE  "/sem_desenfocar_done"
 #define SEM_REALZAR_DONE     "/sem_realzar_done"
 

@@ -8,8 +8,6 @@
 #include <semaphore.h>
 #include <unistd.h>
 
-static int numThreads = 1;
-
 /*
  * Abre la memoria compartida para leer la imagen.
  */
@@ -63,47 +61,41 @@ static void apply_blur(SharedData* shared) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        printf("Uso: %s <salida_desenfocado.bmp> [num_hilos]\n", argv[0]);
+        printf("Uso: %s <numero_hilos>\n", argv[0]);
         return EXIT_FAILURE;
     }
-    char* outFile = argv[1];
-    if (argc > 2) {
-        numThreads = atoi(argv[2]);
-        if (numThreads < 1) numThreads = 1;
-    }
+    int numThreads = atoi(argv[1]);
+    if (numThreads < 1) numThreads = 1;
 
     printf("[Desenfocador] Iniciando. Threads=%d\n", numThreads);
     SharedData* shared = map_shared_memory();
     if (!shared) return EXIT_FAILURE;
 
     // Abrir semáforos
-    sem_t* sem_image_ready     = sem_open(SEM_IMAGE_READY, 0);
-    sem_t* sem_desenfocar_done = sem_open(SEM_DESENFOCAR_DONE, 0);
+    sem_t* sem_desenfocar_ready = sem_open(SEM_DESENFOCAR_READY, 0);
+    sem_t* sem_desenfocar_done  = sem_open(SEM_DESENFOCAR_DONE, 0);
 
-    if (sem_image_ready == SEM_FAILED || sem_desenfocar_done == SEM_FAILED) {
+    if (sem_desenfocar_ready == SEM_FAILED || sem_desenfocar_done == SEM_FAILED) {
         printError(FILE_ERROR);
         munmap(shared, sizeof(SharedData));
         return EXIT_FAILURE;
     }
 
-    printf("[Desenfocador] Esperando imagen...\n");
-    sem_wait(sem_image_ready);
-    printf("[Desenfocador] Imagen recibida. Desenfocando...\n");
+    while (1) {
+        printf("[Desenfocador] Esperando imagen...\n");
+        sem_wait(sem_desenfocar_ready);
+        printf("[Desenfocador] Imagen recibida. Desenfocando...\n");
 
-    apply_blur(shared);
+        apply_blur(shared);
 
-    printf("[Desenfocador] Desenfoque completado.\n");
-    if (writeImage(outFile, shared) == -1) {
-        printError(FILE_ERROR);
-    } else {
-        printf("[Desenfocador] Guardado intermedio en %s\n", outFile);
+        printf("[Desenfocador] Desenfoque completado.\n");
+
+        // Avisar que ha terminado
+        sem_post(sem_desenfocar_done);
     }
 
-    // Avisar que ha terminado
-    sem_post(sem_desenfocar_done);
-
-    // Limpieza
-    sem_close(sem_image_ready);
+    // (Nunca se llegará aquí, pero por buenas prácticas)
+    sem_close(sem_desenfocar_ready);
     sem_close(sem_desenfocar_done);
     munmap(shared, sizeof(SharedData));
     printf("[Desenfocador] Finalizado.\n");

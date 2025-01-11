@@ -44,15 +44,18 @@ int main() {
     if (!shared) return EXIT_FAILURE;
 
     // Crear/abrir semáforos
-    sem_t* sem_image_ready     = sem_open(SEM_IMAGE_READY, O_CREAT, 0666, 0);
-    sem_t* sem_desenfocar_done = sem_open(SEM_DESENFOCAR_DONE, O_CREAT, 0666, 0);
-    sem_t* sem_realzar_done    = sem_open(SEM_REALZAR_DONE, O_CREAT, 0666, 0);
+    sem_t* sem_desenfocar_ready = sem_open(SEM_DESENFOCAR_READY, O_CREAT, 0666, 0);
+    sem_t* sem_realzar_ready    = sem_open(SEM_REALZAR_READY, O_CREAT, 0666, 0);
+    sem_t* sem_desenfocar_done  = sem_open(SEM_DESENFOCAR_DONE, O_CREAT, 0666, 0);
+    sem_t* sem_realzar_done     = sem_open(SEM_REALZAR_DONE, O_CREAT, 0666, 0);
 
-    if (sem_image_ready == SEM_FAILED ||
+    if (sem_desenfocar_ready == SEM_FAILED ||
+        sem_realzar_ready == SEM_FAILED ||
         sem_desenfocar_done == SEM_FAILED ||
         sem_realzar_done == SEM_FAILED) {
         printError(FILE_ERROR);
-        if (sem_image_ready     != SEM_FAILED) sem_close(sem_image_ready);
+        if (sem_desenfocar_ready     != SEM_FAILED) sem_close(sem_desenfocar_ready);
+        if (sem_realzar_ready     != SEM_FAILED) sem_close(sem_realzar_ready);
         if (sem_desenfocar_done!= SEM_FAILED) sem_close(sem_desenfocar_done);
         if (sem_realzar_done   != SEM_FAILED) sem_close(sem_realzar_done);
         munmap(shared, sizeof(SharedData));
@@ -65,7 +68,7 @@ int main() {
         if (!fgets(path, sizeof(path), stdin)) {
             break;
         }
-        path[strcspn(path, "\n")] = 0; // Quitar salto de línea
+        path[strcspn(path, "\n")] = 0;
         if (strcmp(path, "exit") == 0) {
             printf("[Publicador] Saliendo.\n");
             break;
@@ -84,8 +87,9 @@ int main() {
         fclose(f);
         printf("[Publicador] Imagen cargada.\n");
 
-        // Avisar que la imagen está lista
-        sem_post(sem_image_ready);
+        // In the while loop, replace the two sem_post with:
+        sem_post(sem_desenfocar_ready);
+        sem_post(sem_realzar_ready);
 
         // Esperar a desenfocador y realzador
         sem_wait(sem_desenfocar_done);
@@ -94,16 +98,16 @@ int main() {
     }
 
     // Cerrar semáforos
-    sem_close(sem_image_ready);
-    sem_close(sem_desenfocar_done);
-    sem_close(sem_realzar_done);
+    sem_close(sem_desenfocar_ready);
+    sem_close(sem_realzar_ready);
+    sem_unlink(SEM_DESENFOCAR_READY);
+    sem_unlink(SEM_REALZAR_READY);
 
     // Liberar memoria
     munmap(shared, sizeof(SharedData));
 
     // Eliminar recursos al finalizar
     shm_unlink(SHM_NAME);
-    sem_unlink(SEM_IMAGE_READY);
     sem_unlink(SEM_DESENFOCAR_DONE);
     sem_unlink(SEM_REALZAR_DONE);
 

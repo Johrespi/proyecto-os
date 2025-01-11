@@ -8,8 +8,6 @@
 #include <semaphore.h>
 #include <unistd.h>
 
-static int numThreads = 1;
-
 /*
  * Abre la memoria compartida
  */
@@ -71,37 +69,43 @@ static void apply_realce(SharedData* shared) {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 1) {
-        numThreads = atoi(argv[1]);
-        if (numThreads < 1) numThreads = 1;
+    if (argc < 2) {
+        printf("Uso: %s <numero_hilos>\n", argv[0]);
+        return EXIT_FAILURE;
     }
-    printf("[Realzador] Iniciando. Threads=%d\n", numThreads);
+    int numThreads = atoi(argv[1]);
+    if (numThreads < 1) numThreads = 1;
 
+    printf("[Realzador] Iniciando. Threads=%d\n", numThreads);
     SharedData* shared = map_shared_memory();
     if (!shared) {
         return EXIT_FAILURE;
     }
 
-    sem_t* sem_image_ready  = sem_open(SEM_IMAGE_READY, 0);
+    sem_t* sem_realzar_ready = sem_open(SEM_REALZAR_READY, 0);
     sem_t* sem_realzar_done = sem_open(SEM_REALZAR_DONE, 0);
-    if (sem_image_ready == SEM_FAILED || sem_realzar_done == SEM_FAILED) {
+
+    if (sem_realzar_ready == SEM_FAILED || sem_realzar_done == SEM_FAILED) {
         printError(FILE_ERROR);
         munmap(shared, sizeof(SharedData));
         return EXIT_FAILURE;
     }
 
-    printf("[Realzador] Esperando imagen...\n");
-    sem_wait(sem_image_ready);
-    printf("[Realzador] Imagen recibida. Realzando...\n");
+    while (1) {
+        printf("[Realzador] Esperando imagen...\n");
+        sem_wait(sem_realzar_ready);
+        printf("[Realzador] Imagen recibida. Realzando...\n");
 
-    apply_realce(shared);
+        apply_realce(shared);
 
-    printf("[Realzador] Realce completado.\n");
+        printf("[Realzador] Realce completado.\n");
 
-    // Avisar que terminamos
-    sem_post(sem_realzar_done);
+        // Avisar que ha terminado
+        sem_post(sem_realzar_done);
+    }
 
-    sem_close(sem_image_ready);
+    // (Nunca se llegará aquí, pero por buenas prácticas)
+    sem_close(sem_realzar_ready);
     sem_close(sem_realzar_done);
     munmap(shared, sizeof(SharedData));
     printf("[Realzador] Finalizado.\n");
