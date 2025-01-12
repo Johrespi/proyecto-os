@@ -113,8 +113,7 @@ int main(int argc, char* argv[]) {
 
         printf("[Desenfocador] Desenfoque completado.\n");
 
-        // Avisar que ha terminado, DOS veces
-        sem_post(sem_desenfocar_done);
+        // Avisar que ha terminado el proceso de desenfoque
         sem_post(sem_desenfocar_done);
     }
 

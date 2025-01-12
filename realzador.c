@@ -122,8 +122,7 @@ int main(int argc, char* argv[]) {
 
         printf("[Realzador] Realce completado.\n");
 
-        // Avisar que ha terminado, DOS veces
-        sem_post(sem_realzar_done);
+        // Avisar que ha terminado el proceso de realce
         sem_post(sem_realzar_done);
     }
 

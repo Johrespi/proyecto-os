@@ -35,13 +35,7 @@ static SharedData* map_shared_memory() {
     return shared;
 }
 
-/*
- * Espera (con timeout) a que un semáforo aumente.
- * Devuelve:
- *   1 si se obtuvo la señal (proceso sí respondió).
- *   0 si no (timeout, no corrió).
- *  -1 si ocurrió un error distinto.
- */
+// Función que espera a que un semáforo aumente con un timeout.
 static int wait_with_timeout(sem_t* sem, const char* name, int seconds) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -61,7 +55,7 @@ static int wait_with_timeout(sem_t* sem, const char* name, int seconds) {
 }
 
 int main() {
-    printf("[Publicador+Combinador] Iniciando.\n");
+    printf("[Publicador] Iniciando.\n");
 
     SharedData* shared = map_shared_memory();
     if (!shared) return EXIT_FAILURE;
@@ -79,7 +73,7 @@ int main() {
     }
 
     while (1) {
-        // 1) Solicitar ruta BMP
+        // Solicitar ruta BMP
         printf("\n[Publicador] Ingrese ruta BMP (o 'exit' para terminar): ");
         fflush(stdout);
 
@@ -93,7 +87,7 @@ int main() {
             break;
         }
 
-        // 2) Cargar la imagen
+        // Cargar la imagen
         FILE *f = fopen(pathBMP, "rb");
         if (!f) {
             printError(FILE_ERROR);
@@ -107,19 +101,18 @@ int main() {
         fclose(f);
         printf("[Publicador] Imagen cargada.\n");
 
-        // 3) Señalar a Desenfocador y Realzador
-        printf("[Publicador] Señalizando procesos...\n");
+
         sem_post(sem_desenfocar_ready);
         sem_post(sem_realzar_ready);
 
-        // 4) Esperar a que cada uno termine con timeout
+        // Esperar a que cada uno termine con timeout
         printf("[Publicador] Esperando desenfocador...\n");
         int desenfocado = wait_with_timeout(sem_desenfocar_done, "Desenfocador", 60);
 
         printf("[Publicador] Esperando realzador...\n");
         int realzado = wait_with_timeout(sem_realzar_done, "Realzador", 60);
 
-        // 5) Solo guardar si ambos respondieron
+        // Solo guardar si ambos (realzador y desenfocador) respondieron a tiempo
         if (desenfocado == 1 && realzado == 1) {
             char pathOut[256];
             printf("[Publicador] Ingrese ruta para guardar la imagen final: ");
@@ -139,7 +132,7 @@ int main() {
                 printf("[Publicador] Imagen final guardada en %s\n", pathOut);
             }
         } else {
-            printf("[Publicador] No se aplicó desenfoque/realce. Se omite guardado.\n");
+            printf("[Publicador] No se aplicó desenfoque/realce. No se guardará la imagen.\n");
         }
 
         printf("[Publicador] Listo para siguiente imagen.\n");
