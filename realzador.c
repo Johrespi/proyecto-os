@@ -7,42 +7,20 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <pthread.h>
 
-/*
- * Abre la memoria compartida
- */
-static SharedData* map_shared_memory() {
-    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
-    if (shm_fd == -1) {
-        printError(FILE_ERROR);
-        return NULL;
-    }
-    SharedData* shared = mmap(NULL, sizeof(SharedData),
-                              PROT_READ | PROT_WRITE,
-                              MAP_SHARED,
-                              shm_fd,
-                              0);
-    if (shared == MAP_FAILED) {
-        printError(MEMORY_ERROR);
-        close(shm_fd);
-        return NULL;
-    }
-    close(shm_fd);
-    return shared;
-}
+// Estructura para cada "tarea" de realce
+typedef struct {
+    SharedData* shared;
+    int startY;
+    int endY;
+} RealceTask;
 
-/*
- * Realza bordes en la mitad inferior [height/2..height).
- * Aplica kernel simple: 2*pixel - avg_vecinos
- */
-static void apply_realce(SharedData* shared) {
+// Función que realza bordes de [startY..endY), en la banda inferior
+static void realce_chunk(SharedData* shared, int startY, int endY) {
     int width  = shared->header.width_px;
-    int height = shared->header.height_px;
-    int start  = height / 2;
-
-    printf("[Realzador] Procesando filas %d..%d\n", start, height-1);
-    for (int y = start+1; y < height-1; y++) {
-        for (int x = 1; x < width-1; x++) {
+    for (int y = startY; y < endY - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
             int sumB=0, sumG=0, sumR=0;
             for (int dy=-1; dy<=1; dy++) {
                 for (int dx=-1; dx<=1; dx++) {
@@ -61,11 +39,40 @@ static void apply_realce(SharedData* shared) {
             int eG = 2 * shared->pixels[y][x].green - avgG;
             int eR = 2 * shared->pixels[y][x].red   - avgR;
 
-            shared->pixels[y][x].blue  = (eB > 255) ? 255 : ((eB < 0) ? 0 : eB);
-            shared->pixels[y][x].green = (eG > 255) ? 255 : ((eG < 0) ? 0 : eG);
-            shared->pixels[y][x].red   = (eR > 255) ? 255 : ((eR < 0) ? 0 : eR);
+            shared->pixels[y][x].blue  = (eB>255)?255:((eB<0)?0:eB);
+            shared->pixels[y][x].green = (eG>255)?255:((eG<0)?0:eG);
+            shared->pixels[y][x].red   = (eR>255)?255:((eR<0)?0:eR);
         }
     }
+}
+
+// Función que ejecutarán los hilos
+static void* realce_thread(void* arg) {
+    RealceTask* task = (RealceTask*)arg;
+    realce_chunk(task->shared, task->startY, task->endY);
+    return NULL;
+}
+
+/*
+ * Abre la memoria compartida
+ */
+static SharedData* map_shared_memory() {
+    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    if (shm_fd == -1) {
+        printError(FILE_ERROR);
+        return NULL;
+    }
+    SharedData* shared = mmap(NULL, sizeof(SharedData),
+                              PROT_READ | PROT_WRITE,
+                              MAP_SHARED,
+                              shm_fd, 0);
+    if (shared == MAP_FAILED) {
+        printError(MEMORY_ERROR);
+        close(shm_fd);
+        return NULL;
+    }
+    close(shm_fd);
+    return shared;
 }
 
 int main(int argc, char* argv[]) {
@@ -96,7 +103,29 @@ int main(int argc, char* argv[]) {
         sem_wait(sem_realzar_ready);
         printf("[Realzador] Imagen recibida. Realzando...\n");
 
-        apply_realce(shared);
+        // Crear hilos para procesar en paralelo
+        pthread_t threads[numThreads];
+        RealceTask tasks[numThreads];
+
+        int height = shared->header.height_px;
+        int start  = height / 2;  // Realce en mitad inferior
+        int lines  = height - start;
+        int chunk  = lines / numThreads;
+
+        // Asignar cada chunk a un hilo
+        for (int i = 0; i < numThreads; i++) {
+            tasks[i].shared = shared;
+            tasks[i].startY = start + i * chunk;
+            // Último hilo hasta el final
+            tasks[i].endY   = (i == numThreads - 1)
+                              ? height
+                              : (start + (i+1)*chunk);
+            pthread_create(&threads[i], NULL, realce_thread, &tasks[i]);
+        }
+        // Esperar a que terminen todos
+        for (int i = 0; i < numThreads; i++) {
+            pthread_join(threads[i], NULL);
+        }
 
         printf("[Realzador] Realce completado.\n");
 
@@ -105,7 +134,7 @@ int main(int argc, char* argv[]) {
         sem_post(sem_realzar_done);
     }
 
-    // (Nunca se llegará aquí, pero por buenas prácticas)
+    // (Nunca se llega aquí en la práctica)
     sem_close(sem_realzar_ready);
     sem_close(sem_realzar_done);
     munmap(shared, sizeof(SharedData));

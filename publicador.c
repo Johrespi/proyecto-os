@@ -1,6 +1,6 @@
+#define _POSIX_C_SOURCE 200809L
 #include "common.h"
 #include "bmp.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -8,9 +8,11 @@
 #include <semaphore.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <time.h>
 
 /*
- * Crea (o abre) la memoria compartida.
+ * Mapea la memoria compartida.
  */
 static SharedData* map_shared_memory() {
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
@@ -36,10 +38,35 @@ static SharedData* map_shared_memory() {
     return shared;
 }
 
+/*
+ * Espera (con timeout) a que un semáforo aumente.
+ * Devuelve:
+ *   1 si se obtuvo la señal (proceso sí respondió).
+ *   0 si no (timeout, no corrió).
+ *  -1 si ocurrió un error distinto.
+ */
+static int wait_with_timeout(sem_t* sem, const char* name, int seconds) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += seconds;
+
+    if (sem_timedwait(sem, &ts) == -1) {
+        if (errno == ETIMEDOUT) {
+            printf("[Publicador] No hay %s en ejecución (timeout).\n", name);
+            return 0;
+        } else {
+            perror("[Publicador] Error esperando semáforo");
+            return -1;
+        }
+    }
+    printf("[Publicador] %s completado\n", name);
+    return 1;
+}
+
 int main() {
     printf("[Publicador+Combinador] Iniciando.\n");
 
-    // Crear y mapear la memoria compartida
+    // Crear/mapear memoria compartida
     SharedData* shared = map_shared_memory();
     if (!shared) return EXIT_FAILURE;
 
@@ -92,40 +119,34 @@ int main() {
         sem_post(sem_desenfocar_ready);
         sem_post(sem_realzar_ready);
 
-        // 4) Esperar a que cada uno termine
+        // 4) Esperar a que cada uno termine con timeout
         printf("[Publicador] Esperando desenfocador...\n");
-        if (sem_wait(sem_desenfocar_done) == -1) {
-            perror("[Publicador] Error esperando desenfocador");
-            continue;
-        }
-        printf("[Publicador] Desenfocador completado\n");
+        int desenfocado = wait_with_timeout(sem_desenfocar_done, "Desenfocador", 60);
 
         printf("[Publicador] Esperando realzador...\n");
-        if (sem_wait(sem_realzar_done) == -1) {
-            perror("[Publicador] Error esperando realzador");
-            continue;
-        }
-        printf("[Publicador] Realzador completado\n");
+        int realzado = wait_with_timeout(sem_realzar_done, "Realzador", 60);
 
-        // 5) Preguntar al usuario dónde guardar la imagen final
-        char pathOut[256];
-        printf("[Combinador] Ingrese ruta para guardar la imagen final: ");
-        fflush(stdout);
-        if (!fgets(pathOut, sizeof(pathOut), stdin)) {
-            break; // fin de entrada
-        }
-        pathOut[strcspn(pathOut, "\n")] = 0;
-        if (!strlen(pathOut)) {
-            // Si no ingresa nada, usar un nombre genérico
-            strcpy(pathOut, "salida/salida_final.bmp");
-        }
+        // 5) Solo guardar si ambos respondieron
+        if (desenfocado == 1 && realzado == 1) {
+            char pathOut[256];
+            printf("[Combinador] Ingrese ruta para guardar la imagen final: ");
+            fflush(stdout);
+            if (!fgets(pathOut, sizeof(pathOut), stdin)) {
+                break; // fin de entrada
+            }
+            pathOut[strcspn(pathOut, "\n")] = 0;
+            if (!strlen(pathOut)) {
+                strcpy(pathOut, "salida_final.bmp");
+            }
 
-        // 6) Guardar la imagen final
-        printf("[Combinador] Desenfoque y Realce completados. Guardando en: %s\n", pathOut);
-        if (writeImage(pathOut, shared) == -1) {
-            printError(FILE_ERROR);
+            printf("[Combinador] Desenfoque y Realce completados. Guardando en: %s\n", pathOut);
+            if (writeImage(pathOut, shared) == -1) {
+                printError(FILE_ERROR);
+            } else {
+                printf("[Combinador] Imagen final guardada en %s\n", pathOut);
+            }
         } else {
-            printf("[Combinador] Imagen final guardada en %s\n", pathOut);
+            printf("[Publicador] No se aplicó desenfoque/realce. Se omite guardado.\n");
         }
 
         printf("[Publicador] Listo para siguiente imagen.\n");

@@ -7,10 +7,42 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <pthread.h>
 
-/*
- * Abre la memoria compartida para leer la imagen.
- */
+// Estructura para cada "tarea" de desenfoque
+typedef struct {
+    SharedData* shared;
+    int startY;
+    int endY;
+} DesenfoqueTask;
+
+// Función que desenfoca filas [startY..endY) en la mitad superior
+static void blur_chunk(SharedData* shared, int startY, int endY) {
+    int width  = shared->header.width_px;
+    for (int y = startY; y < endY - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
+            int sumB=0, sumG=0, sumR=0;
+            for (int dy=-1; dy<=1; dy++) {
+                for (int dx=-1; dx<=1; dx++) {
+                    sumB += shared->pixels[y+dy][x+dx].blue;
+                    sumG += shared->pixels[y+dy][x+dx].green;
+                    sumR += shared->pixels[y+dy][x+dx].red;
+                }
+            }
+            shared->pixels[y][x].blue  = sumB/9;
+            shared->pixels[y][x].green = sumG/9;
+            shared->pixels[y][x].red   = sumR/9;
+        }
+    }
+}
+
+// Hilo que procesa un chunk de desenfoque
+static void* blur_thread(void* arg) {
+    DesenfoqueTask* task = (DesenfoqueTask*)arg;
+    blur_chunk(task->shared, task->startY, task->endY);
+    return NULL;
+}
+
 static SharedData* map_shared_memory() {
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
@@ -29,34 +61,6 @@ static SharedData* map_shared_memory() {
     }
     close(shm_fd);
     return shared;
-}
-
-/*
- * Desenfoca la mitad superior (filas 0..height/2)
- * Kernel 3x3 simple.
- */
-static void apply_blur(SharedData* shared) {
-    int width  = shared->header.width_px;
-    int height = shared->header.height_px;
-    int half   = height / 2;
-
-    printf("[Desenfocador] Procesando filas 0..%d\n", half - 1);
-    for (int y = 1; y < half - 1; y++) {
-        for (int x = 1; x < width - 1; x++) {
-            int sumB=0, sumG=0, sumR=0;
-            for (int dy=-1; dy<=1; dy++) {
-                for (int dx=-1; dx<=1; dx++) {
-                    sumB += shared->pixels[y+dy][x+dx].blue;
-                    sumG += shared->pixels[y+dy][x+dx].green;
-                    sumR += shared->pixels[y+dy][x+dx].red;
-                }
-            }
-            shared->pixels[y][x].blue  = sumB/9;
-            shared->pixels[y][x].green = sumG/9;
-            shared->pixels[y][x].red   = sumR/9;
-            // alpha no se modifica
-        }
-    }
 }
 
 int main(int argc, char* argv[]) {
@@ -86,7 +90,26 @@ int main(int argc, char* argv[]) {
         sem_wait(sem_desenfocar_ready);
         printf("[Desenfocador] Imagen recibida. Desenfocando...\n");
 
-        apply_blur(shared);
+        // Crear hilos para trabajar en paralelo
+        pthread_t threads[numThreads];
+        DesenfoqueTask tasks[numThreads];
+
+        int height = shared->header.height_px;
+        int half   = height / 2;
+        int chunk  = half / numThreads;
+
+        for (int i = 0; i < numThreads; i++) {
+            tasks[i].shared = shared;
+            tasks[i].startY = i * chunk;
+            tasks[i].endY   = (i == numThreads - 1)
+                              ? half
+                              : (i + 1) * chunk;
+            pthread_create(&threads[i], NULL, blur_thread, &tasks[i]);
+        }
+        // Esperar todos los hilos
+        for (int i = 0; i < numThreads; i++) {
+            pthread_join(threads[i], NULL);
+        }
 
         printf("[Desenfocador] Desenfoque completado.\n");
 
