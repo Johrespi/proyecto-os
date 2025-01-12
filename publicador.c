@@ -4,13 +4,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <pthread.h>
 #include <sys/mman.h>
 #include <semaphore.h>
 #include <string.h>
 #include <unistd.h>
 
-// --- Código de mapeo a memoria compartida ---
+/*
+ * Crea (o abre) la memoria compartida.
+ */
 static SharedData* map_shared_memory() {
     int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     if (shm_fd == -1) {
@@ -35,50 +36,10 @@ static SharedData* map_shared_memory() {
     return shared;
 }
 
-// --- Hilo que actúa como Combinador ---
-static void* combinador_thread(void* arg) {
-    SharedData* shared = (SharedData*)arg;
-
-    // Abrir semáforos de desenfoque y realce
-    sem_t* sem_desenfocar_done = sem_open(SEM_DESENFOCAR_DONE, 0);
-    sem_t* sem_realzar_done    = sem_open(SEM_REALZAR_DONE, 0);
-
-    if (sem_desenfocar_done == SEM_FAILED || sem_realzar_done == SEM_FAILED) {
-        printError(FILE_ERROR);
-        return NULL;
-    }
-
-    // Bucle infinito, esperando que Desenfocador y Realzador acaben
-    while (1) {
-        printf("[Combinador] Esperando que Desenfocador y Realzador completen...\n");
-        if (sem_wait(sem_desenfocar_done) == -1) {
-            perror("[Combinador] Error al esperar SEM_DESENFOCAR_DONE");
-            break;
-        }
-        if (sem_wait(sem_realzar_done) == -1) {
-            perror("[Combinador] Error al esperar SEM_REALZAR_DONE");
-            break;
-        }
-
-        // Guardar la imagen final cada vez que haya terminado
-        printf("[Combinador] Desenfoque y Realce completados. Guardando la imagen final.\n");
-        if (writeImage("salida_final.bmp", shared) == -1) {
-            printError(FILE_ERROR);
-        } else {
-            printf("[Combinador] Imagen final guardada en salida_final.bmp\n");
-        }
-    }
-
-    sem_close(sem_desenfocar_done);
-    sem_close(sem_realzar_done);
-    return NULL;
-}
-
-// --- Main que actúa como Publicador ---
 int main() {
     printf("[Publicador+Combinador] Iniciando.\n");
 
-    // Crear memoria compartida
+    // Crear y mapear la memoria compartida
     SharedData* shared = map_shared_memory();
     if (!shared) return EXIT_FAILURE;
 
@@ -93,34 +54,32 @@ int main() {
         sem_desenfocar_done  == SEM_FAILED ||
         sem_realzar_done     == SEM_FAILED) {
         printError(FILE_ERROR);
+        munmap(shared, sizeof(SharedData));
         return EXIT_FAILURE;
     }
 
-    // Lanzar el hilo combinador en paralelo
-    pthread_t combThread;
-    pthread_create(&combThread, NULL, combinador_thread, shared);
-
-    // Bucle principal de publicación
     while (1) {
-        printf("[Publicador] Ingrese ruta BMP (o 'exit' para terminar): ");
+        // 1) Solicitar ruta BMP
+        printf("\n[Publicador] Ingrese ruta BMP (o 'exit' para terminar): ");
         fflush(stdout);
 
-        char path[256];
-        if (!fgets(path, sizeof(path), stdin)) {
-            break;
+        char pathBMP[256];
+        if (!fgets(pathBMP, sizeof(pathBMP), stdin)) {
+            break; // fin de entrada
         }
-        path[strcspn(path, "\n")] = 0;
-        if (strcmp(path, "exit") == 0) {
+        pathBMP[strcspn(pathBMP, "\n")] = 0;
+        if (strcmp(pathBMP, "exit") == 0) {
             printf("[Publicador] Saliendo.\n");
             break;
         }
 
-        FILE *f = fopen(path, "rb");
+        // 2) Cargar la imagen
+        FILE *f = fopen(pathBMP, "rb");
         if (!f) {
             printError(FILE_ERROR);
             continue;
         }
-        printf("[Publicador] Leyendo %s...\n", path);
+        printf("[Publicador] Leyendo %s...\n", pathBMP);
         if (readImage(f, shared) == -1) {
             fclose(f);
             continue;
@@ -128,12 +87,12 @@ int main() {
         fclose(f);
         printf("[Publicador] Imagen cargada.\n");
 
-        // Notificar a Desenfocador y Realzador
+        // 3) Señalar a Desenfocador y Realzador
         printf("[Publicador] Señalizando procesos...\n");
         sem_post(sem_desenfocar_ready);
         sem_post(sem_realzar_ready);
 
-        // Esperar señales para que publicador sepa que terminó
+        // 4) Esperar a que cada uno termine
         printf("[Publicador] Esperando desenfocador...\n");
         if (sem_wait(sem_desenfocar_done) == -1) {
             perror("[Publicador] Error esperando desenfocador");
@@ -148,13 +107,31 @@ int main() {
         }
         printf("[Publicador] Realzador completado\n");
 
-        printf("[Publicador] Listo para siguiente imagen.\n\n");
+        // 5) Preguntar al usuario dónde guardar la imagen final
+        char pathOut[256];
+        printf("[Combinador] Ingrese ruta para guardar la imagen final: ");
+        fflush(stdout);
+        if (!fgets(pathOut, sizeof(pathOut), stdin)) {
+            break; // fin de entrada
+        }
+        pathOut[strcspn(pathOut, "\n")] = 0;
+        if (!strlen(pathOut)) {
+            // Si no ingresa nada, usar un nombre genérico
+            strcpy(pathOut, "salida/salida_final.bmp");
+        }
+
+        // 6) Guardar la imagen final
+        printf("[Combinador] Desenfoque y Realce completados. Guardando en: %s\n", pathOut);
+        if (writeImage(pathOut, shared) == -1) {
+            printError(FILE_ERROR);
+        } else {
+            printf("[Combinador] Imagen final guardada en %s\n", pathOut);
+        }
+
+        printf("[Publicador] Listo para siguiente imagen.\n");
     }
 
-    // Cerrar hilos y semáforos al finalizar
-    pthread_cancel(combThread);
-    pthread_join(combThread, NULL);
-
+    // Cerrar semáforos y liberar recursos
     sem_close(sem_desenfocar_ready);
     sem_close(sem_realzar_ready);
     sem_close(sem_desenfocar_done);
@@ -165,7 +142,6 @@ int main() {
     sem_unlink(SEM_DESENFOCAR_DONE);
     sem_unlink(SEM_REALZAR_DONE);
 
-    // Liberar memoria
     munmap(shared, sizeof(SharedData));
     shm_unlink(SHM_NAME);
 
