@@ -25,10 +25,7 @@ static SharedData* map_shared_memory() {
         close(shm_fd);
         return NULL;
     }
-    SharedData* shared = mmap(NULL, sizeof(SharedData),
-                              PROT_READ | PROT_WRITE,
-                              MAP_SHARED,
-                              shm_fd, 0);
+    SharedData* shared = mmap(NULL, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shared == MAP_FAILED) {
         printError(MEMORY_ERROR);
         close(shm_fd);

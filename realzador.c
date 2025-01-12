@@ -9,14 +9,14 @@
 #include <unistd.h>
 #include <pthread.h>
 
-// Estructura para cada "tarea" de realce
+// Estructura que define los limites de la imagen a procesar para cada hilo al aplicar el realce
 typedef struct {
     SharedData* shared;
     int startY;
     int endY;
 } RealceTask;
 
-// Función que realza bordes de [startY..endY), en la banda inferior
+// Función que realza bordes con los límites (startY y endY) establecidos, desde la mitad de la imagen hacia abajo
 static void realce_chunk(SharedData* shared, int startY, int endY) {
     int width  = shared->header.width_px;
     for (int y = startY; y < endY - 1; y++) {
@@ -53,19 +53,14 @@ static void* realce_thread(void* arg) {
     return NULL;
 }
 
-/*
- * Abre la memoria compartida
- */
+// Función que abre la memoria compartida
 static SharedData* map_shared_memory() {
     int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
     if (shm_fd == -1) {
         printError(FILE_ERROR);
         return NULL;
     }
-    SharedData* shared = mmap(NULL, sizeof(SharedData),
-                              PROT_READ | PROT_WRITE,
-                              MAP_SHARED,
-                              shm_fd, 0);
+    SharedData* shared = mmap(NULL, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (shared == MAP_FAILED) {
         printError(MEMORY_ERROR);
         close(shm_fd);
@@ -103,12 +98,12 @@ int main(int argc, char* argv[]) {
         sem_wait(sem_realzar_ready);
         printf("[Realzador] Imagen recibida. Realzando...\n");
 
-        // Crear hilos para procesar en paralelo
+        // Crear hilos para el procesamiento en paralelo
         pthread_t threads[numThreads];
         RealceTask tasks[numThreads];
 
         int height = shared->header.height_px;
-        int start  = height / 2;  // Realce en mitad inferior
+        int start  = height / 2;  // Realce en mitad inferior (desde la mitad de la imagen hacia abajo)
         int lines  = height - start;
         int chunk  = lines / numThreads;
 
