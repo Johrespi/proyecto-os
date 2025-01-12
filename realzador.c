@@ -112,9 +112,7 @@ int main(int argc, char* argv[]) {
             tasks[i].shared = shared;
             tasks[i].startY = start + i * chunk;
             // Último hilo hasta el final
-            tasks[i].endY   = (i == numThreads - 1)
-                              ? height
-                              : (start + (i+1)*chunk);
+            tasks[i].endY   = (i == numThreads - 1) ? height: (start + (i+1)*chunk);
             pthread_create(&threads[i], NULL, realce_thread, &tasks[i]);
         }
         // Esperar a que terminen todos
@@ -129,7 +127,6 @@ int main(int argc, char* argv[]) {
         sem_post(sem_realzar_done);
     }
 
-    // (Nunca se llega aquí en la práctica)
     sem_close(sem_realzar_ready);
     sem_close(sem_realzar_done);
     munmap(shared, sizeof(SharedData));

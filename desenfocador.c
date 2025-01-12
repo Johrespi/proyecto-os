@@ -118,7 +118,6 @@ int main(int argc, char* argv[]) {
         sem_post(sem_desenfocar_done);
     }
 
-    // (Nunca se llegará aquí, pero por buenas prácticas)
     sem_close(sem_desenfocar_ready);
     sem_close(sem_desenfocar_done);
     munmap(shared, sizeof(SharedData));

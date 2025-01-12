@@ -63,20 +63,16 @@ static int wait_with_timeout(sem_t* sem, const char* name, int seconds) {
 int main() {
     printf("[Publicador+Combinador] Iniciando.\n");
 
-    // Crear/mapear memoria compartida
     SharedData* shared = map_shared_memory();
     if (!shared) return EXIT_FAILURE;
 
-    // Crear/abrir semáforos
+    // Crear semáforos
     sem_t* sem_desenfocar_ready = sem_open(SEM_DESENFOCAR_READY, O_CREAT, 0666, 0);
     sem_t* sem_realzar_ready    = sem_open(SEM_REALZAR_READY,  O_CREAT, 0666, 0);
     sem_t* sem_desenfocar_done  = sem_open(SEM_DESENFOCAR_DONE, O_CREAT, 0666, 0);
     sem_t* sem_realzar_done     = sem_open(SEM_REALZAR_DONE,    O_CREAT, 0666, 0);
 
-    if (sem_desenfocar_ready == SEM_FAILED ||
-        sem_realzar_ready    == SEM_FAILED ||
-        sem_desenfocar_done  == SEM_FAILED ||
-        sem_realzar_done     == SEM_FAILED) {
+    if (sem_desenfocar_ready == SEM_FAILED || sem_realzar_ready    == SEM_FAILED || sem_desenfocar_done  == SEM_FAILED || sem_realzar_done     == SEM_FAILED) {
         printError(FILE_ERROR);
         munmap(shared, sizeof(SharedData));
         return EXIT_FAILURE;
@@ -89,7 +85,7 @@ int main() {
 
         char pathBMP[256];
         if (!fgets(pathBMP, sizeof(pathBMP), stdin)) {
-            break; // fin de entrada
+            break; 
         }
         pathBMP[strcspn(pathBMP, "\n")] = 0;
         if (strcmp(pathBMP, "exit") == 0) {
@@ -126,21 +122,21 @@ int main() {
         // 5) Solo guardar si ambos respondieron
         if (desenfocado == 1 && realzado == 1) {
             char pathOut[256];
-            printf("[Combinador] Ingrese ruta para guardar la imagen final: ");
+            printf("[Publicador] Ingrese ruta para guardar la imagen final: ");
             fflush(stdout);
             if (!fgets(pathOut, sizeof(pathOut), stdin)) {
-                break; // fin de entrada
+                break;
             }
             pathOut[strcspn(pathOut, "\n")] = 0;
             if (!strlen(pathOut)) {
-                strcpy(pathOut, "salida_final.bmp");
+                strcpy(pathOut, "salida/salida_final.bmp");
             }
 
-            printf("[Combinador] Desenfoque y Realce completados. Guardando en: %s\n", pathOut);
+            printf("[Publicador] Desenfoque y Realce completados. Guardando en: %s\n", pathOut);
             if (writeImage(pathOut, shared) == -1) {
                 printError(FILE_ERROR);
             } else {
-                printf("[Combinador] Imagen final guardada en %s\n", pathOut);
+                printf("[Publicador] Imagen final guardada en %s\n", pathOut);
             }
         } else {
             printf("[Publicador] No se aplicó desenfoque/realce. Se omite guardado.\n");
@@ -154,15 +150,13 @@ int main() {
     sem_close(sem_realzar_ready);
     sem_close(sem_desenfocar_done);
     sem_close(sem_realzar_done);
-
     sem_unlink(SEM_DESENFOCAR_READY);
     sem_unlink(SEM_REALZAR_READY);
     sem_unlink(SEM_DESENFOCAR_DONE);
     sem_unlink(SEM_REALZAR_DONE);
-
     munmap(shared, sizeof(SharedData));
     shm_unlink(SHM_NAME);
-
-    printf("[Publicador+Combinador] Finalizado.\n");
+    
+    printf("[Publicador] Finalizado.\n");
     return EXIT_SUCCESS;
 }

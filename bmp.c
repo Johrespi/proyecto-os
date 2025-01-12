@@ -3,9 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Muestra un mensaje de error simple.
- */
+// Función que muestra mensajes de errores según sea el caso.
 void printError(int error) {
     switch(error) {
         case ARGUMENT_ERROR:
@@ -25,9 +23,7 @@ void printError(int error) {
     }
 }
 
-/*
- * Verifica si el BMP es válido (bits_per_pixel 24/32, compresión = 0, 'BM').
- */
+// Función que verifica que el BMP sea válido para procesar.
 int checkBMPValid(BMP_Header* header) {
     if (header->type != 0x4D42) return 0;
     if (header->compression != 0) return 0;
@@ -35,9 +31,9 @@ int checkBMPValid(BMP_Header* header) {
     return 1;
 }
 
-/*
- * Lee la imagen al recurso compartido, respetando 24/32 bits y corrige el flip.
- */
+
+// Función que lee la imagen BMP mediante el recurso compartido, maneja las imagenes de 24/32 bits según
+// sea el caso y corrige si la imagen está invertida (flip).
 static int readImageData(FILE *srcFile, SharedData* shared, int inverted) {
     int width = shared->header.width_px;
     int height = shared->header.height_px;
@@ -102,6 +98,7 @@ int readImage(FILE *srcFile, void* sharedVoid) {
         shared->header.height_px = -shared->header.height_px;
     }
 
+    // Valida tamaño de la imagen (ancho y alto) según los límites establecidos en common.h
     if (shared->header.width_px > MAX_WIDTH || shared->header.height_px > MAX_HEIGHT) {
         printError(VALID_ERROR);
         return -1;
@@ -113,13 +110,12 @@ int readImage(FILE *srcFile, void* sharedVoid) {
         return -1;
     }
 
-    // Leer data
+    // Leer data de la imagen
     return readImageData(srcFile, shared, inverted);
 }
 
-/*
- * Escribe la imagen al disco en formato bottom-up (height>0).
- */
+
+// Escribe la imagen al disco en formato bottom-up (height>0).
 int writeImage(char* destFileName, void* sharedVoid) {
     SharedData* shared = (SharedData*)sharedVoid;
     FILE* out = fopen(destFileName, "wb");
@@ -175,7 +171,7 @@ int writeImage(char* destFileName, void* sharedVoid) {
                 }
             }
         }
-        // Padding si 24 bits
+        // Padding si la imagen es de 24 bits
         if (bpp == 24) {
             int rowPad = (4 - ((width * 3) % 4)) % 4;
             if (rowPad) {

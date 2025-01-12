@@ -22,4 +22,4 @@ typedef struct {
     Pixel pixels[MAX_HEIGHT][MAX_WIDTH];
 } SharedData;
 
-#endif // COMMON_H
+#endif 
