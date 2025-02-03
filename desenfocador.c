@@ -101,9 +101,7 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < numThreads; i++) {
             tasks[i].shared = shared;
             tasks[i].startY = i * chunk;
-            tasks[i].endY   = (i == numThreads - 1)
-                              ? half
-                              : (i + 1) * chunk;
+            tasks[i].endY   = (i == numThreads - 1) ? half : (i + 1) * chunk;
             pthread_create(&threads[i], NULL, blur_thread, &tasks[i]);
         }
         // Esperar todos los hilos
